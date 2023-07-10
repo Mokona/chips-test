@@ -129,6 +129,12 @@ function addEmulators(b: Builder) {
         t.addSources(['lc80.c', 'lc80-ui-impl.cc']);
         t.addDependencies(['ui', 'roms']);
     });
+    b.addTarget('vg5000', 'windowed-exe', (t) => {
+        t.setDir(dir);
+        t.setIdeFolder(ideFolder);
+        t.addSources(['vg5000.c', 'vg5000-ui-impl.cc']);
+        t.addDependencies(['common', 'roms', 'ui']);
+    });
 }
 
 function addAsciiEmulators(b: Builder) {
