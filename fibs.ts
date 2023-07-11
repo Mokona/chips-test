@@ -135,6 +135,13 @@ function addEmulators(b: Builder) {
         t.addSources(['vg5000.c', 'vg5000-ui-impl.cc']);
         t.addDependencies(['common', 'roms', 'ui']);
     });
+    b.addTarget('vg5000-ui', 'windowed-exe', (t) => {
+        t.setDir(dir);
+        t.setIdeFolder(uiIdeFolder);
+        t.addSources(['vg5000.c', 'vg5000-ui-impl.cc']);
+        t.addCompileDefinitions({ CHIPS_USE_UI: '1' });
+        t.addDependencies(['common', 'roms', 'ui']);
+    });
 }
 
 function addAsciiEmulators(b: Builder) {
