@@ -72,7 +72,7 @@ static struct {
 } state;
 
 #ifdef CHIPS_USE_UI
-static void ui_draw_cb(void);
+static void ui_draw_cb(const ui_draw_info_t* draw_info);
 static void ui_boot_cb(vg5000_t* sys);
 static void ui_save_snapshot(size_t slot_index);
 static bool ui_load_snapshot(size_t slot_index);
@@ -132,7 +132,10 @@ void app_init(void) {
         .logger.func = slog_func,
     });
     #ifdef CHIPS_USE_UI
-        ui_init(ui_draw_cb);
+        ui_init(&(ui_desc_t){
+            .draw_cb = ui_draw_cb,
+            .imgui_ini_key = "floooh.chips.vg5000",
+        });
         ui_vg5000_init(&state.ui, &(ui_vg5000_desc_t){
             .vg5000 = &state.vg5000,
             .boot_cb = ui_boot_cb,
@@ -163,7 +166,7 @@ void app_init(void) {
     bool delay_input = false;
     if (sargs_exists("file")) {
         delay_input = true;
-        fs_start_load_file(FS_SLOT_IMAGE, sargs_value("file"));
+        fs_load_file_async(FS_CHANNEL_IMAGES, sargs_value("file"));
     }
     if (!delay_input) {
         if (sargs_exists("input")) {
@@ -192,7 +195,7 @@ void app_frame(void) {
 void app_input(const sapp_event* event) {
     // TODO: accept dropped files also when ImGui grabs input
     // if (event->type == SAPP_EVENTTYPE_FILES_DROPPED) {
-    //     fs_start_load_dropped_file(FS_SLOT_IMAGE);
+    //     fs_start_load_dropped_file(FS_CHANNEL_IMAGES);
     // }
     #ifdef CHIPS_USE_UI
     if (ui_input(event)) {
@@ -380,10 +383,10 @@ void k7_to_tape_buffer_free(chips_range_t tape_buffer) {
 static void handle_file_loading(void) {
     fs_dowork();
     const uint32_t load_delay_frames = 120;
-    if (fs_success(FS_SLOT_IMAGE) && clock_frame_count_60hz() > load_delay_frames) {
-        const chips_range_t file_data = fs_data(FS_SLOT_IMAGE);
+    if (fs_success(FS_CHANNEL_IMAGES) && clock_frame_count_60hz() > load_delay_frames) {
+        const chips_range_t file_data = fs_data(FS_CHANNEL_IMAGES);
         bool load_success = false;
-        if (fs_ext(FS_SLOT_IMAGE, "k7")) {
+        if (fs_ext(FS_CHANNEL_IMAGES, "k7")) {
             chips_range_t tape_buffer;
             load_success = k7_to_tape_buffer(&state.vg5000, file_data, &tape_buffer);
             if (load_success) {
@@ -409,7 +412,7 @@ static void handle_file_loading(void) {
         else {
             gfx_flash_error();
         }
-        fs_reset(FS_SLOT_IMAGE);
+        fs_reset(FS_CHANNEL_IMAGES);
     }
 }
 
@@ -448,7 +451,8 @@ static void draw_status_bar(void) {
 
 #if defined(CHIPS_USE_UI)
 
-void ui_draw_cb(void) {
+void ui_draw_cb(const ui_draw_info_t* draw_info) {
+    (void)draw_info;
     ui_vg5000_draw(&state.ui);
 }
 
@@ -502,7 +506,7 @@ static void ui_fetch_snapshot_callback(const fs_snapshot_response_t* response) {
 
 static void ui_load_snapshots_from_storage(void) {
     for (size_t snapshot_slot = 0; snapshot_slot < UI_SNAPSHOT_MAX_SLOTS; snapshot_slot++) {
-        fs_start_load_snapshot(FS_SLOT_SNAPSHOTS, "vg5000", snapshot_slot, ui_fetch_snapshot_callback);
+        fs_load_snapshot_async("vg5000", snapshot_slot, ui_fetch_snapshot_callback);
     }
 }
 #endif
