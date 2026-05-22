@@ -135,6 +135,9 @@ function addEmulators(b: Builder) {
         t.setIdeFolder(ideFolder);
         t.addSources(['vg5000.c', 'vg5000-ui-impl.cc']);
         t.addDependencies(['common', 'roms', 'ui']);
+        if (b.isEmscripten()) {
+            t.addLinkOptions(['-sINITIAL_MEMORY=67108864']);
+        }
     });
     b.addTarget('vg5000-ui', 'windowed-exe', (t) => {
         t.setDir(dir);
@@ -142,6 +145,9 @@ function addEmulators(b: Builder) {
         t.addSources(['vg5000.c', 'vg5000-ui-impl.cc']);
         t.addCompileDefinitions({ CHIPS_USE_UI: '1' });
         t.addDependencies(['common', 'roms', 'ui']);
+        if (b.isEmscripten()) {
+            t.addLinkOptions(['-sINITIAL_MEMORY=67108864']);
+        }
     });
 }
 
