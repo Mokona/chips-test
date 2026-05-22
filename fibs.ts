@@ -8,7 +8,8 @@ import { addWebpageCommand } from './fibs-scripts/webpage.ts';
 export function configure(c: Configurer) {
     c.addImport({
         name: 'chips',
-        url: 'https://github.com/floooh/chips',
+        url: 'https://github.com/mokona/chips',
+        ref: 'vg5000',
     });
     c.addImport({
         name: 'dcimgui',
