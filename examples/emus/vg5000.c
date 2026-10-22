@@ -117,8 +117,9 @@ void app_init(void) {
     vg5000_init(&state.vg5000, &desc);
     gfx_init(&(gfx_desc_t){
         #ifdef CHIPS_USE_UI
-        .init_extra_cb = ui_preinit,
-        .draw_extra_cb = ui_draw,
+        .init_ui_cb = ui_preinit,
+        .update_ui_cb = ui_update,
+        .draw_ui_cb = ui_draw,
         #endif
         .border = {
             .left = BORDER_LEFT,
