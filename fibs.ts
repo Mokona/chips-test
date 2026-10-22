@@ -361,6 +361,7 @@ function addTests(b: Builder) {
     b.addTarget({ name: 'z80-int', dir, ideFolder, type, sources: ['z80-int.c'], deps: ['chips'] });
     b.addTarget({ name: 'm6502-int', dir, ideFolder, type, sources: ['m6502-int.c'], deps: ['chips'] });
     b.addTarget({ name: 'z80-timing', dir, ideFolder, type, sources: ['z80-timing.c'], deps: ['chips'] });
+    b.addTarget({ name: 'vg5000-tape-test', dir, ideFolder, type, sources: ['vg5000-tape-test.c'], deps: ['chips', 'roms', 'keybuf'] });
     b.addTarget('chips-test', type, (t) => {
         t.setDir(dir);
         t.setIdeFolder(ideFolder);
