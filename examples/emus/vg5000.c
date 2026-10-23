@@ -53,8 +53,6 @@
     #include "ui/ui_vg5000.h"
 #endif
 
-#include <stdlib.h> // For malloc
-
 typedef struct {
     uint32_t version;
     vg5000_t vg5000;
@@ -264,124 +262,6 @@ void app_cleanup(void) {
     sargs_shutdown();
 }
 
-uint64_t tape_short_impulse(uint16_t* buffer) {
-    buffer[0] = 833;
-    buffer[1] = 833;
-    return 2;
-}
-
-uint64_t tape_long_impulse(uint16_t* buffer) {
-    buffer[0] = 1666;
-    buffer[1] = 1666;
-    return 2;
-}
-
-uint64_t tape_end_of_byte(uint16_t* buffer) {
-    uint64_t output_position = 0;
-    for (size_t i = 0; i < 4; i++) {
-        output_position += tape_short_impulse(buffer + output_position);
-    }
-    output_position += tape_long_impulse(buffer + output_position);
- 
-    return output_position;
-}
-
-bool k7_to_tape_buffer(vg5000_t* sys, chips_range_t k7_data, chips_range_t* tape_buffer) {
-    assert(sys && k7_data.ptr && tape_buffer);
-
-    if (k7_data.size < 32) {
-        return false;
-    }
-
-    bool success = true;
-
-    // Allocate the oupput tape buffer
-    const uint32_t total_synchro = 30000;
-    tape_buffer->size = (k7_data.size + total_synchro) * 40;
-    tape_buffer->ptr = malloc(tape_buffer->size);
-
-    uint32_t output_position = 0;
-    uint16_t* tape_buffer_ptr = tape_buffer->ptr;
-
-    // Start with a short silence (which also will but the signal to high at the end)
-    tape_buffer_ptr[output_position++] = 17400;
-
-    // Then 30000 impulses of synchronisation
-    for (int i = 0; i < 30000; i++) {
-        output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-    }
-    output_position += tape_end_of_byte(tape_buffer_ptr + output_position);
-
-    assert(output_position < tape_buffer->size);
-
-    // Iterate over the 32 first bytes of the input buffer
-    const uint8_t* k7_data_ptr = k7_data.ptr;
-    for (size_t i = 0; i < 32; i++) {
-        uint8_t byte = k7_data_ptr[i];
-        for (size_t j = 0; j < 8; j++) {
-            if (byte & 0x1) { 
-                output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-                output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-            }
-            else {
-                output_position += tape_long_impulse(tape_buffer_ptr + output_position);
-            }
-            byte >>= 1;
-        }
-
-        output_position += tape_end_of_byte(tape_buffer_ptr + output_position);
-    }
-
-    assert(output_position < tape_buffer->size);
-
-    // Another short silence
-    //tape_buffer_ptr[output_position++] = 10000;
-
-    // 7200 impulses of synchronisation
-    for (int i = 0; i < 7200; i++) {
-        output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-    }
-    output_position += tape_end_of_byte(tape_buffer_ptr + output_position);
-
-    assert(output_position < tape_buffer->size);
-
-    // TODO: it would be better to get it from the k7 header data
-    // Then the rest of the data
-    for (size_t i = 32; i < k7_data.size; i++) {
-        uint8_t byte = k7_data_ptr[i];
-        for (size_t j = 0; j < 8; j++) {
-            if (byte & 0x1) { 
-                output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-                output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-            }
-            else {
-                output_position += tape_long_impulse(tape_buffer_ptr + output_position);
-            }
-            byte >>= 1;
-        }
-
-        // Followed by End of Byte, which is 4 short impulses followed by one long impulse
-        for (int j = 0; j < 4; j++) {
-            output_position += tape_short_impulse(tape_buffer_ptr + output_position);
-        }
-        output_position += tape_long_impulse(tape_buffer_ptr + output_position);
-    }
-
-    // printf("input data size: %d\n", k7_data.size);
-    // printf("initial allocation: %d\n", tape_buffer->size);
-    // printf("output_position: %d\n", output_position * 2);
-    // printf("percentage used: %d\n", (output_position * 2 * 100) / tape_buffer->size);
-
-    tape_buffer->size = output_position * 2;
-
-    return success;
-}
-
-void k7_to_tape_buffer_free(chips_range_t tape_buffer) {
-    free(tape_buffer.ptr);
-    tape_buffer.ptr = NULL;
-}
-
 static void handle_file_loading(void) {
     fs_dowork();
     const uint32_t load_delay_frames = 120;
@@ -389,14 +269,11 @@ static void handle_file_loading(void) {
         const chips_range_t file_data = fs_data(FS_CHANNEL_IMAGES);
         bool load_success = false;
         if (fs_ext(FS_CHANNEL_IMAGES, "k7")) {
-            chips_range_t tape_buffer;
-            load_success = k7_to_tape_buffer(&state.vg5000, file_data, &tape_buffer);
+            load_success = vg5000_insert_k7(&state.vg5000, file_data);
             if (load_success) {
-                load_success = vg5000_insert_tape(&state.vg5000, tape_buffer);
                 keybuf_put("CLOAD\n");
             }
             printf("Inserting tape: %s\n", load_success ? "success" : "failure");
-            k7_to_tape_buffer_free(tape_buffer);
         }
         else {
             // TODO: implement quickload

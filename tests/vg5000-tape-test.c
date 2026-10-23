@@ -23,16 +23,7 @@
 // loaded machine code binary location
 #define BINARY_ADDR (TXTTAB + 16)
 
-// k7 file layout
-#define K7_HEADER_SIZE (32)
-#define K7_LENGTH_OFFSET (28)
-#define K7_DATA_OFFSET (K7_HEADER_SIZE + 10)
-#define K7_MAX_SIZE (4096)
-
-// tape signal half-periods in CPU ticks
-#define TAPE_SHORT (833)
-#define TAPE_LONG (1666)
-#define TAPE_MAX_PULSES (512 * 1024)
+#define K7_MAX_SIZE (32 * 1024)
 
 #define FRAME_US (16667)
 
@@ -41,7 +32,6 @@
 
 static vg5000_t sys;
 static uint8_t k7[K7_MAX_SIZE];
-static uint16_t pulses[TAPE_MAX_PULSES];
 
 // run frames, feeding keys from the key buffer like the emulator app does
 static void advance_frames(int num) {
@@ -150,7 +140,7 @@ static size_t make_k7(void) {
 
     const size_t length = pos - data_start;
     uint16_t checksum = 0;
-    for (size_t i = data_start; i < pos; i++) {
+    for (size_t i = data_start; i < pos; i += 1) {
         checksum += k7[i];
     }
     k7[length_pos] = length & 0xFF;
@@ -164,76 +154,23 @@ static size_t make_k7(void) {
     return pos;
 }
 
-static size_t put_impulse(size_t pos, uint16_t half_period) {
-    pulses[pos++] = half_period;
-    pulses[pos++] = half_period;
-    return pos;
-}
-
-static size_t put_end_of_byte(size_t pos) {
-    for (int i = 0; i < 4; i++) {
-        pos = put_impulse(pos, TAPE_SHORT);
-    }
-    return put_impulse(pos, TAPE_LONG);
-}
-
-static size_t put_byte(size_t pos, uint8_t byte) {
-    for (int bit = 0; bit < 8; bit++, byte >>= 1) {
-        if (byte & 1) {
-            pos = put_impulse(pos, TAPE_SHORT);
-            pos = put_impulse(pos, TAPE_SHORT);
-        }
-        else {
-            pos = put_impulse(pos, TAPE_LONG);
-        }
-    }
-    return put_end_of_byte(pos);
-}
-
-static size_t put_synchro(size_t pos, int num_impulses) {
-    for (int i = 0; i < num_impulses; i++) {
-        pos = put_impulse(pos, TAPE_SHORT);
-    }
-    return put_end_of_byte(pos);
-}
-
-// reference k7 to tape signal encoder
-// duplicated code at the moment (with different naming)
-// TODO: merge when k7 handling moves to chips
-static size_t k7_to_pulses(size_t k7_size) {
-    size_t pos = 0;
-    pulses[pos++] = 17400;  // starts with a silence
-
-    pos = put_synchro(pos, 30000);
-    for (size_t i = 0; i < K7_HEADER_SIZE; i++) {
-        pos = put_byte(pos, k7[i]);
-    }
-
-    pos = put_synchro(pos, 7200);
-    for (size_t i = K7_HEADER_SIZE; i < k7_size; i++) {
-        pos = put_byte(pos, k7[i]);
-    }
-
-    // return number of pulses
-    return pos;
+static bool insert_k7(size_t k7_size) {
+    return vg5000_insert_k7(&sys, (chips_range_t){ .ptr = k7, .size = k7_size });
 }
 
 UTEST(vg5000_tape, cload_k7) {
     boot();
 
     const size_t k7_size = make_k7();
-    const size_t num_pulses = k7_to_pulses(k7_size);
-
-    T(num_pulses < TAPE_MAX_PULSES);
-    T(vg5000_insert_tape(&sys, (chips_range_t){ .ptr = pulses, .size = num_pulses * sizeof(uint16_t) }));
+    T(insert_k7(k7_size));
 
     type_on_keyboard("CLOAD\n");
 
     T(wait_tape_operation(120) > 0);
     T(!tape_motor_on());
-    const uint16_t length = k7[K7_LENGTH_OFFSET] | (k7[K7_LENGTH_OFFSET + 1] << 8);
+    const uint16_t length = k7[VG5000_K7_LENGTH_OFFSET] | (k7[VG5000_K7_LENGTH_OFFSET + 1] << 8);
     for (uint16_t i = 0; i < length; i++) {
-        ASSERT_EQ(k7[K7_DATA_OFFSET + i], mem_rd(&sys.mem, TXTTAB + i));
+        ASSERT_EQ(k7[VG5000_K7_DATA_OFFSET + i], mem_rd(&sys.mem, TXTTAB + i));
     }
 }
 
@@ -271,6 +208,67 @@ UTEST(vg5000_tape, csave_without_rec_does_not_record) {
     T(wait_tape_operation(120) > 0);
 
     T(sys.tape_deck.num_pulses == 0);
+}
+
+UTEST(vg5000_tape, insert_k7_rejects_invalid_files) {
+    boot();
+    const size_t k7_size = make_k7();
+    T(insert_k7(k7_size));
+    const uint32_t num_pulses = sys.tape_deck.num_pulses;
+
+    // empty
+    T(!insert_k7(0));
+    // data cut
+    T(!insert_k7(VG5000_K7_DATA_OFFSET + 10));
+    // no data sync
+    k7[VG5000_K7_HEADER_SIZE] = 0;
+    T(!insert_k7(k7_size));
+    // not a k7
+    make_k7();
+    k7[0] = 0;
+    T(!insert_k7(k7_size));
+
+    // the previous tape is kept
+    T(sys.tape_deck.num_pulses == num_pulses);
+}
+
+UTEST(vg5000_tape, insert_k7_too_long_for_the_tape) {
+    boot();
+    make_k7();
+
+    const size_t length = 30000;
+    k7[VG5000_K7_LENGTH_OFFSET] = length & 0xFF;
+    k7[VG5000_K7_LENGTH_OFFSET + 1] = length >> 8;
+    memset(&k7[VG5000_K7_DATA_OFFSET], 0xFF, length);
+
+    T(!insert_k7(VG5000_K7_DATA_OFFSET + length));
+    T(sys.tape_deck.num_pulses == 0);
+}
+
+UTEST(vg5000_tape, insert_k7_several_blocks) {
+    boot();
+    const size_t k7_size = make_k7();
+    T(insert_k7(k7_size));
+    const uint32_t block_pulses = sys.tape_deck.num_pulses;
+
+    memcpy(&k7[k7_size], k7, k7_size);
+    T(insert_k7(2 * k7_size));
+    T(sys.tape_deck.num_pulses == 2 * block_pulses);
+
+    // each block starts with a silence
+    T(tape_deck_find_silence(&sys.tape_deck, 0, VG5000_TAPE_SILENCE_TICKS) == 0);
+    T(tape_deck_find_silence(&sys.tape_deck, 1, VG5000_TAPE_SILENCE_TICKS) == block_pulses);
+}
+
+UTEST(vg5000_tape, insert_k7_ignores_what_follows_the_blocks) {
+    boot();
+    const size_t k7_size = make_k7();
+    T(insert_k7(k7_size));
+    const uint32_t block_pulses = sys.tape_deck.num_pulses;
+
+    memcpy(&k7[k7_size], "JUNK", 4);
+    T(insert_k7(k7_size + 4));
+    T(sys.tape_deck.num_pulses == block_pulses);
 }
 
 UTEST_MAIN()
