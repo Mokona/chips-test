@@ -382,6 +382,7 @@ function addTests(b: Builder) {
             'm6502dasm-test.c',
             'z80dasm-test.c',
             'm6502-test.c',
+            'tape-deck-test.c',
         ]);
         t.addJob({
             job: 'embedfiles',
