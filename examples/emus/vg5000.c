@@ -193,10 +193,10 @@ void app_frame(void) {
 
 /* keyboard input handling */
 void app_input(const sapp_event* event) {
-    // TODO: accept dropped files also when ImGui grabs input
-    // if (event->type == SAPP_EVENTTYPE_FILES_DROPPED) {
-    //     fs_start_load_dropped_file(FS_CHANNEL_IMAGES);
-    // }
+    // accept dropped files also when ImGui grabs input
+    if (event->type == SAPP_EVENTTYPE_FILES_DROPPED) {
+        fs_load_dropped_file_async(FS_CHANNEL_IMAGES);
+    }
     #ifdef CHIPS_USE_UI
     if (ui_input(event)) {
         // input was handled by UI
@@ -270,9 +270,6 @@ static void handle_file_loading(void) {
         bool load_success = false;
         if (fs_ext(FS_CHANNEL_IMAGES, "k7")) {
             load_success = vg5000_insert_k7(&state.vg5000, file_data);
-            if (load_success) {
-                keybuf_put("CLOAD\n");
-            }
             printf("Inserting tape: %s\n", load_success ? "success" : "failure");
         }
         else {
@@ -284,8 +281,12 @@ static void handle_file_loading(void) {
             if (clock_frame_count_60hz() > (load_delay_frames + 10)) {
                 gfx_flash_success();
             }
+            // the input replaces the pending keys, so it replaces CLOAD
             if (sargs_exists("input")) {
                 keybuf_put(sargs_value("input"));
+            }
+            else if (fs_ext(FS_CHANNEL_IMAGES, "k7")) {
+                keybuf_put("CLOAD\n");
             }
         }
         else {
