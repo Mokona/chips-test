@@ -10,7 +10,7 @@
 #include "chips/beeper.h"
 #include "chips/clk.h"
 #include "chips/kbd.h"
-#include "chips/tape_recorder.h"
+#include "chips/tape_deck.h"
 #include "systems/vg5000.h"
 #include "vg5000-roms.h"
 #include "keybuf.h"
@@ -63,7 +63,7 @@ static void type_on_keyboard(const char* str) {
 }
 
 static bool tape_motor_on(void) {
-    return sys.tape.remote;
+    return tape_deck_is_motor_on(&sys.tape_deck);
 }
 
 // run until the tape motor has been switched on then off again,
@@ -225,9 +225,7 @@ UTEST(vg5000_tape, cload_k7) {
     const size_t num_pulses = k7_to_pulses(k7_size);
 
     T(num_pulses < TAPE_MAX_PULSES);
-    T(vg5000_insert_tape(&sys,
-        (chips_range_t){ .ptr = pulses, .size = num_pulses * sizeof(uint16_t) },
-        (chips_range_t){ .ptr = k7, .size = k7_size }));
+    T(vg5000_insert_tape(&sys, (chips_range_t){ .ptr = pulses, .size = num_pulses * sizeof(uint16_t) }));
 
     type_on_keyboard("CLOAD\n");
 
@@ -249,8 +247,10 @@ UTEST(vg5000_tape, csave_cload_roundtrip) {
         program[i] = mem_rd(&sys.mem, TXTTAB + i);
     }
 
+    vg5000_tape_rec(&sys, true);
     type_on_keyboard("CSAVE\"RT\"\n");
     T(wait_tape_operation(120) > 0);
+    vg5000_tape_rec(&sys, false);
 
     type_on_keyboard("NEW\n");
     T(mem_rd(&sys.mem, TXTTAB) == 0 && mem_rd(&sys.mem, TXTTAB + 1) == 0);
@@ -261,6 +261,16 @@ UTEST(vg5000_tape, csave_cload_roundtrip) {
     for (int i = 0; i < 64; i++) {
         ASSERT_EQ(program[i], mem_rd(&sys.mem, TXTTAB + i));
     }
+}
+
+UTEST(vg5000_tape, csave_without_rec_does_not_record) {
+    boot();
+
+    type_on_keyboard("10 PRINT \"HELLO\"\n");
+    type_on_keyboard("CSAVE\"RT\"\n");
+    T(wait_tape_operation(120) > 0);
+
+    T(sys.tape_deck.num_pulses == 0);
 }
 
 UTEST_MAIN()

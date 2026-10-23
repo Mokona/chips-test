@@ -34,7 +34,7 @@
 #include "chips/beeper.h"
 #include "chips/clk.h"
 #include "chips/kbd.h"
-#include "chips/tape_recorder.h"
+#include "chips/tape_deck.h"
 #include "systems/vg5000.h"
 #include "vg5000-roms.h"
 #if defined(CHIPS_USE_UI)
@@ -392,7 +392,7 @@ static void handle_file_loading(void) {
             chips_range_t tape_buffer;
             load_success = k7_to_tape_buffer(&state.vg5000, file_data, &tape_buffer);
             if (load_success) {
-                load_success = vg5000_insert_tape(&state.vg5000, tape_buffer, file_data);
+                load_success = vg5000_insert_tape(&state.vg5000, tape_buffer);
                 keybuf_put("CLOAD\n");
             }
             printf("Inserting tape: %s\n", load_success ? "success" : "failure");
@@ -436,11 +436,11 @@ static void draw_status_bar(void) {
     sdtx_pos(1.0f, (h / 8.0f) - 1.5f);
 
     char * cassette_status;
-    if (state.vg5000.tape_recorder.error) {
-        cassette_status = "ERROR";
+    if (tape_deck_is_recording(&state.vg5000.tape_deck)) {
+        cassette_status = "REC";
     }
-    else if (state.vg5000.tape_recorder.motor_on) {
-        cassette_status = "ON";
+    else if (tape_deck_is_motor_on(&state.vg5000.tape_deck)) {
+        cassette_status = "PLAY";
     }
     else {
         cassette_status = "STOP";
